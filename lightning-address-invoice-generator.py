@@ -1,25 +1,61 @@
 import requests
-import lnurl
+import json
+import logging
 
-def get_lnurlp_response(decode_endpoint):
+def get_payurl(email):
     try:
-        response = requests.get(decode_endpoint)
-        response.raise_for_status()
-        return response.json()
-    except (requests.HTTPError, ValueError) as e:
-        print(f"Error decoding LNURLp: {e}")
-        return None
+        parts = email.split('@')
+        domain = parts[1]
+        username = parts[0]
+        transform_url = "https://" + domain + "/.well-known/lnurlp/" + username
+        logging.info("Transformed URL:" + transform_url)
+        return transform_url
+    except Exception as e: 
+        logging.error("Exception, possibly malformed LN Address: " + str(e))
+        return {'status' : 'error', 'msg' : 'Possibly a malformed LN Address'}
 
-# Example usage
-decode_endpoint = "https://getalby.com/.well-known/lnurlp/ealvar13"  # Replace with the actual decode endpoint URL
+def get_url(path, headers):
+    response = requests.get(path, headers=headers)
+    return response.text
 
-response = get_lnurlp_response(decode_endpoint)
-print(response)
+def get_bolt11(email, amount):
+    try: 
+        purl = get_payurl(email)
+        json_content = get_url(path=purl, headers={})
+        datablock = json.loads(json_content)
 
-# Replace with the URL you received from your previous call
-decoded_url = "https://getalby.com/lnurlp/ealvar13/callback"
+        lnurlpay = datablock["callback"]
+        min_amount = datablock["minSendable"]
 
-# Encode the URL into a LNURL string
-encoded_lnurl = lnurl.encode(decoded_url)
+        payquery = lnurlpay + "?amount=" + str(min_amount)
+        if amount is not None:
+            if int(amount*1000) > int(min_amount):
+                payquery = lnurlpay + "?amount=" + str(amount*1000)
+        
+        logging.info("amount: " + str(amount))
+        logging.info("payquery: " + str(payquery))
 
-print(encoded_lnurl)
+        ln_res = get_url(path=payquery, headers={})
+        pr_dict = json.loads(ln_res)
+
+        if 'pr' in pr_dict: 
+            bolt11 = pr_dict['pr']
+            ubolt11 = bolt11.upper()
+            return ubolt11
+
+        elif 'reason' in pr_dict: 
+            reason = pr_dict['reason']
+            return reason
+
+    except Exception as e: 
+        logging.error("in get bolt11 : "  + str(e))
+        return {'status': 'error', 'msg': 'Cannot make a Bolt11, are you sure the address is valid?'}
+
+def main():
+    email = input("Enter your Lightning Address: ")
+    amount = int(input("Enter desired amount: "))
+    bolt11 = get_bolt11(email, amount)
+    print(f"Generated bolt11: {bolt11}")
+
+if __name__ == "__main__":
+    main()
