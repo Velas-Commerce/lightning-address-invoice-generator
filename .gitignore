@@ -1,5 +1,1 @@
-# Ignore all log files
-*.log
-
-# Ignore the virtual environment
-venv/
+.direnv
