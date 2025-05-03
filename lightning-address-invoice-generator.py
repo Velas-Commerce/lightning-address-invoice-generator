@@ -1,6 +1,8 @@
+#!/usr/bin/env python3
 import requests
 import json
 import logging
+import argparse
 
 def get_payurl(email):
     try:
@@ -52,9 +54,16 @@ def get_bolt11(email, amount):
         return {'status': 'error', 'msg': 'Cannot make a Bolt11, are you sure the address is valid?'}
 
 def main():
-    email = input("Enter your Lightning Address: ")
-    amount = int(input("Enter desired amount: "))
-    bolt11 = get_bolt11(email, amount)
+    parser = argparse.ArgumentParser(description="Send a Lightning payment.")
+    parser.add_argument("-r", "--lnaddress", help="Lightning Address")
+    parser.add_argument("-a", "--amount", type=int, help="Desired amount")
+
+    args = parser.parse_args()
+
+    lnaddress = args.lnaddress if args.lnaddress else input("Enter your Lightning Address: ")
+    amount = args.amount if args.amount else int(input("Enter amount: "))
+
+    bolt11 = get_bolt11(lnaddress, amount)
     print(f"Generated bolt11: {bolt11}")
 
 if __name__ == "__main__":
