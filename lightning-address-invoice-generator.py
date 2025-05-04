@@ -4,9 +4,9 @@ import json
 import logging
 import argparse
 
-def get_payurl(email):
+def get_payurl(lnaddress):
     try:
-        parts = email.split('@')
+        parts = lnaddress.split('@')
         domain = parts[1]
         username = parts[0]
         transform_url = "https://" + domain + "/.well-known/lnurlp/" + username
@@ -20,9 +20,9 @@ def get_url(path, headers):
     response = requests.get(path, headers=headers)
     return response.text
 
-def get_bolt11(email, amount):
+def get_bolt11(lnaddress, amount):
     try: 
-        purl = get_payurl(email)
+        purl = get_payurl(lnaddress)
         json_content = get_url(path=purl, headers={})
         datablock = json.loads(json_content)
 
