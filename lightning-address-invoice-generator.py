@@ -3,6 +3,8 @@ import requests
 import json
 import logging
 import argparse
+import sys
+import re
 
 def get_payurl(lnaddress):
     try:
@@ -53,15 +55,44 @@ def get_bolt11(lnaddress, amount):
         logging.error("in get bolt11 : "  + str(e))
         return {'status': 'error', 'msg': 'Cannot make a Bolt11, are you sure the address is valid?'}
 
+def parse_positional_args(argv):
+    lnaddress = None
+    amount = None
+
+    for arg in argv:
+        # Detect email-like LN address (must contain one @ and at least one dot after it)
+        if re.match(r"^[^@]+@[^@]+\.[^@]+$", arg):
+            lnaddress = arg
+        # Detect valid integer amount (non-negative)
+        elif arg.isdigit():
+            amount = int(arg)
+
+    return lnaddress, amount
+
 def main():
+    # Try to detect lnaddress and amount from positional args
+    detected_lnaddress, detected_amount = parse_positional_args(sys.argv[1:])
+
     parser = argparse.ArgumentParser(description="Send a Lightning payment.")
     parser.add_argument("-r", "--lnaddress", help="Lightning Address")
-    parser.add_argument("-a", "--amount", type=int, help="Desired amount")
+    parser.add_argument("-a", "--amount", type=int, help="Desired amount (integer)")
 
-    args = parser.parse_args()
+    # Unpacking of parse_known_args()
+    args, _ = parser.parse_known_args()
 
-    lnaddress = args.lnaddress if args.lnaddress else input("Enter your Lightning Address: ")
-    amount = args.amount if args.amount else int(input("Enter amount: "))
+    # Access parsed arguments safely
+    lnaddress = args.lnaddress or detected_lnaddress or input("Enter your Lightning Address: ")
+    amount = args.amount or detected_amount
+
+    # Prompt for amount only if still missing
+    if amount is None:
+        while True:
+            user_input = input("Enter amount (integer): ")
+            if user_input.isdigit():
+                amount = int(user_input)
+                break
+            else:
+                print("Amount must be a non-negative integer.")
 
     bolt11 = get_bolt11(lnaddress, amount)
     print(f"Generated bolt11: {bolt11}")
