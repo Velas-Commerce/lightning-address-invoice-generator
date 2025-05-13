@@ -13,8 +13,10 @@ You can run the script using Python 3. Make sure you have Python 3 installed on 
 To run the script:
 
 ```sh
-$ python3 lightning-address-invoice-generator.py
+$ ./lightning-address-invoice-generator.py
 ```
+
+Optionally you can use the command line arguments as shown by `$ ./lightning-address-invoice-generator.py --help`
 
 ## License
 
