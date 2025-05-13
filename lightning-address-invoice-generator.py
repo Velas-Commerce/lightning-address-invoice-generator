@@ -30,12 +30,21 @@ def get_bolt11(lnaddress, amount):
 
         lnurlpay = datablock["callback"]
         min_amount = datablock["minSendable"]
+        max_amount = datablock["maxSendable"]
+
+        logging.info("min. amount: " + str(min_amount))
+        logging.info("max. amount: " + str(max_amount))
 
         payquery = lnurlpay + "?amount=" + str(min_amount)
         if amount is not None:
-            if int(amount*1000) > int(min_amount):
-                payquery = lnurlpay + "?amount=" + str(amount*1000)
-        
+            amount_msat = int(amount * 1000)
+            if amount_msat > max_amount:
+                raise ValueError("Amount is more than maximum sendable")        
+            if amount_msat >= int(min_amount):
+                payquery = lnurlpay + "?amount=" + str(amount_msat)
+            else:
+                raise ValueError("Amount is less than minimum sendable, you may pay in more than a single invoice")        
+
         logging.info("amount: " + str(amount))
         logging.info("payquery: " + str(payquery))
 
@@ -53,7 +62,7 @@ def get_bolt11(lnaddress, amount):
 
     except Exception as e: 
         logging.error("in get bolt11 : "  + str(e))
-        return {'status': 'error', 'msg': 'Cannot make a Bolt11, are you sure the address is valid?'}
+        return {'status': 'error', 'msg': 'Cannot make a Bolt11, are you sure the address `' + str(lnaddress) + '` is valid and the amount withing the allowed range [' + str(int(min_amount // 1000)) + '; ' + str(int(max_amount // 1000)) + '] Satoshi?'}
 
 def parse_positional_args(argv):
     lnaddress = None
