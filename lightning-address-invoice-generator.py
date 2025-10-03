@@ -52,6 +52,7 @@ def get_bolt11(email, amount):
         return {'status': 'error', 'msg': 'Cannot make a Bolt11, are you sure the address is valid?'}
 
 def main():
+    logging.basicConfig(level=logging.INFO)
     email = input("Enter your Lightning Address: ")
     amount = int(input("Enter desired amount: "))
     bolt11 = get_bolt11(email, amount)
