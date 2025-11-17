@@ -1,0 +1,229 @@
+#!/usr/bin/env python3
+"""
+PySide6 GUI wrapper for lnaddress2invoice.py
+
+Place this file next to your existing `lnaddress2invoice.py` (the script you supplied).
+Run with: python lnaddress2invoice_gui.py
+
+This GUI provides:
+ - Recipient (Lightning Address) input
+ - Amount (integer, sats) input
+ - Paste button: pastes clipboard if it *looks like* an lnaddress
+ - Generate button: calls get_bolt11(lnaddress, amount) in a background thread
+ - Read-only invoice field with Copy button. Double-clicking the invoice field also copies it.
+ - Status line for errors / progress
+
+Requires: PySide6, requests (already used by the script)
+"""
+
+from __future__ import annotations
+import sys
+import re
+from typing import Optional
+from PySide6.QtWidgets import (
+    QApplication, QWidget, QMainWindow, QLabel, QLineEdit, QPushButton,
+    QHBoxLayout, QVBoxLayout, QMessageBox, QSizePolicy
+)
+from PySide6.QtGui import QRegularExpressionValidator, QClipboard
+from PySide6.QtCore import QRegularExpression, QObject, Signal, QThread
+
+# Import the get_bolt11 function from the existing script
+# Make sure lnaddress2invoice.py is in the same directory or in PYTHONPATH
+try:
+    from lnaddress2invoice import get_bolt11
+except Exception as e:
+    get_bolt11 = None
+
+LNADDRESS_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+class ClickCopyLineEdit(QLineEdit):
+    """Read-only QLineEdit that copies its contents to the clipboard on double-click."""
+    def mouseDoubleClickEvent(self, ev):
+        text = self.text()
+        if text:
+            cb = QApplication.clipboard()
+            cb.setText(text, mode=QClipboard.Clipboard)
+        super().mouseDoubleClickEvent(ev)
+
+
+class InvoiceWorker(QObject):
+    finished = Signal(dict)
+
+    def __init__(self, lnaddress: str, amount: int):
+        super().__init__()
+        self.lnaddress = lnaddress
+        self.amount = amount
+
+    def run(self):
+        """Call get_bolt11 and emit result. Runs in another thread."""
+        if get_bolt11 is None:
+            self.finished.emit({"status": "error", "msg": "Could not import get_bolt11 from lnaddress2invoice.py"})
+            return
+        try:
+            res = get_bolt11(self.lnaddress, self.amount)
+            # Ensure a dict
+            if not isinstance(res, dict):
+                res = {"status": "error", "msg": "Unexpected non-dict response from get_bolt11"}
+        except Exception as e:
+            res = {"status": "error", "msg": str(e)}
+        self.finished.emit(res)
+
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("LNAddress → BOLT11")
+        self.resize(680, 160)
+
+        central = QWidget()
+        self.setCentralWidget(central)
+
+        layout = QVBoxLayout()
+
+        # Recipient row
+        row_recipient = QHBoxLayout()
+        lbl_recipient = QLabel("Recipient (lnaddress):")
+        self.edit_recipient = QLineEdit()
+        self.edit_recipient.setPlaceholderText("user@example.com")
+        btn_paste = QPushButton("Paste"
+        )
+        btn_paste.clicked.connect(self.on_paste)
+
+        row_recipient.addWidget(lbl_recipient)
+        row_recipient.addWidget(self.edit_recipient)
+        row_recipient.addWidget(btn_paste)
+
+        # Amount row
+        row_amount = QHBoxLayout()
+        lbl_amount = QLabel("Amount (sats):")
+        self.edit_amount = QLineEdit()
+        self.edit_amount.setValidator(QRegularExpressionValidator(QRegularExpression(r"^[0-9]{1,18}$"), self))
+        self.edit_amount.setPlaceholderText("e.g. 1000")
+        row_amount.addWidget(lbl_amount)
+        row_amount.addWidget(self.edit_amount)
+
+        # Generate button
+        self.btn_generate = QPushButton("Generate Invoice")
+        self.btn_generate.clicked.connect(self.on_generate)
+        self.btn_generate.setDefault(True)
+
+        # Invoice output row
+        row_invoice = QHBoxLayout()
+        lbl_invoice = QLabel("BOLT11 Invoice:")
+        self.edit_invoice = ClickCopyLineEdit()
+        self.edit_invoice.setReadOnly(True)
+        self.edit_invoice.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        btn_copy = QPushButton("Copy")
+        btn_copy.clicked.connect(self.on_copy_invoice)
+
+        row_invoice.addWidget(lbl_invoice)
+        row_invoice.addWidget(self.edit_invoice)
+        row_invoice.addWidget(btn_copy)
+
+        # Status label
+        self.lbl_status = QLabel("")
+
+        layout.addLayout(row_recipient)
+        layout.addLayout(row_amount)
+        layout.addWidget(self.btn_generate)
+        layout.addLayout(row_invoice)
+        layout.addWidget(self.lbl_status)
+
+        central.setLayout(layout)
+
+        # Thread placeholders
+        self._thread: Optional[QThread] = None
+        self._worker: Optional[InvoiceWorker] = None
+
+    def on_paste(self):
+        cb = QApplication.clipboard()
+        text = cb.text().strip()
+        if LNADDRESS_RE.match(text):
+            self.edit_recipient.setText(text)
+            self.lbl_status.setText("Pasted lnaddress from clipboard.")
+        else:
+            # Not an lnaddress: ask the user whether to paste anyway
+            ret = QMessageBox.question(self, "Paste from clipboard?",
+                                       "Clipboard does not look like an lnaddress. Paste anyway?",
+                                       QMessageBox.Yes | QMessageBox.No)
+            if ret == QMessageBox.Yes:
+                self.edit_recipient.setText(text)
+                self.lbl_status.setText("Pasted clipboard (didn't match lnaddress pattern).")
+
+    def on_generate(self):
+        lnaddress = self.edit_recipient.text().strip()
+        amount_text = self.edit_amount.text().strip()
+
+        if not lnaddress:
+            QMessageBox.warning(self, "Missing recipient", "Please enter the recipient Lightning Address.")
+            return
+        if not LNADDRESS_RE.match(lnaddress):
+            resp = QMessageBox.question(self, "Recipient format",
+                                        "Recipient doesn't look like an lnaddress. Continue anyway?",
+                                        QMessageBox.Yes | QMessageBox.No)
+            if resp != QMessageBox.Yes:
+                return
+
+        if not amount_text:
+            QMessageBox.warning(self, "Missing amount", "Please enter an amount (integer sats).")
+            return
+
+        try:
+            amount = int(amount_text)
+            if amount < 0:
+                raise ValueError("Amount negative")
+        except Exception:
+            QMessageBox.warning(self, "Invalid amount", "Amount must be a non-negative integer (satoshis).")
+            return
+
+        # Disable UI while working
+        self.btn_generate.setEnabled(False)
+        self.lbl_status.setText("Generating invoice...")
+        self.edit_invoice.clear()
+
+        # Create worker and thread
+        self._thread = QThread()
+        self._worker = InvoiceWorker(lnaddress, amount)
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.finished.connect(self.on_worker_finished)
+        self._worker.finished.connect(self._thread.quit)
+        self._worker.finished.connect(self._worker.deleteLater)
+        self._thread.finished.connect(self._thread.deleteLater)
+        self._thread.start()
+
+    def on_worker_finished(self, result: dict):
+        self.btn_generate.setEnabled(True)
+        if result.get("status") == "ok":
+            bolt11 = result.get("bolt11")
+            self.edit_invoice.setText(bolt11)
+            self.lbl_status.setText("Invoice generated successfully. Double-click or press Copy to copy to clipboard.")
+        else:
+            msg = result.get("msg", "Unknown error")
+            self.lbl_status.setText(f"Error: {msg}")
+            QMessageBox.critical(self, "Error", str(msg))
+
+    def on_copy_invoice(self):
+        text = self.edit_invoice.text()
+        if not text:
+            QMessageBox.information(self, "Nothing to copy", "There is no invoice to copy.")
+            return
+        cb = QApplication.clipboard()
+        cb.setText(text, mode=QClipboard.Clipboard)
+        self.lbl_status.setText("Invoice copied to clipboard.")
+
+
+def main():
+    app = QApplication(sys.argv)
+
+    if get_bolt11 is None:
+        QMessageBox.critical(None, "Import Error",
+                             "Could not import get_bolt11 from lnaddress2invoice.py.\n"
+                             "Make sure lnaddress2invoice.py is in the same directory and is importable.")
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec())
+
+
+if __name__ == '__main__':
+    main()

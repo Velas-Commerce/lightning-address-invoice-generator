@@ -1,25 +1,29 @@
 # Lightning Address to BOLT11 Invoice Generator
 
-This dead simple script allows you to generate a BOLT11 invoice from an Lightning Address. It asks for a Lightning Address and desired amount, and returns a BOLT11 invoice.
+This simple GUI and script allow you to generate BOLT11 invoices from Lightning Addresses.
+It asks for the Lightning Address and desired amount and returns a BOLT11 invoice.
 
-Hecho con ❤️ y ⚡ en Puerto Rico 🏝️
+> Hecho con ❤️ y ⚡ en Puerto Rico 🏝️
 
-This script is almost completely lifted from https://sendsats.to/.  It's a cool site for using your Lightning Address.
+The script originally was almost completely lifted from https://sendsats.to/.
+It's a cool site for using your Lightning Address.
 
 ## Script Usage
 
 You can run the script using Python 3. Make sure you have Python 3 installed on your system.
+For convenience there was added a `shell.nix` and a `myproject.toml` to manage dependencies.
 
 To run the script:
 
 ```sh
-$ ./lightning-address-invoice-generator.py
+$ ./lnaddress2invoice.py
 ```
 
-Optionally you can use the command line arguments as shown by `$ ./lightning-address-invoice-generator.py --help`
+Optionally you can use the command line arguments as shown by `$ ./lnaddress2invoice.py --help`
 
 ## License
 
-This project is free and open source software designed to be stolen.  Please steal this code and make something better, original or fun.
+This project is free and open source software designed to be stolen.
+Please steal this code and make something better, original or fun.
 
 This project is licensed under the terms of the MIT license. For more details, please see the [LICENSE](LICENSE) file.
